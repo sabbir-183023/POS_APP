@@ -2,10 +2,7 @@
 import Link from 'next/link';
 import OrderTable from '../components/orders/OrderTable';
 
-
-export default function OrdersPage() {
-  
-
+export default function OrdersPage() {  
   return (
     <div className="min-h-screen bg-gray-50 p-6">
       <div className="max-w-6xl mx-auto space-y-6">
