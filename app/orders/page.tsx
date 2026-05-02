@@ -1,6 +1,6 @@
 
 import Link from 'next/link';
-import OrderTable from '../components/orders/OrderTable.tsx';
+import OrderTable from '../components/orders/OrderTable';
 
 
 export default function OrdersPage() {
