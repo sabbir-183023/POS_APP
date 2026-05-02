@@ -48,12 +48,16 @@ const formatTime = (rawDate: string) => {
 
 const OrderTable = () => {
   const [orders, setOrders] = useState<ProcessedOrder[]>([]);
-  const [selectedOrder, setSelectedOrder] = useState<ProcessedOrder | null>(null);
+  const [selectedOrder, setSelectedOrder] = useState<ProcessedOrder | null>(
+    null,
+  );
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [deleteModalOpen, setDeleteModalOpen] = useState(false);
-  const [orderToDelete, setOrderToDelete] = useState<ProcessedOrder | null>(null);
+  const [orderToDelete, setOrderToDelete] = useState<ProcessedOrder | null>(
+    null,
+  );
   const [deleting, setDeleting] = useState(false);
 
   useEffect(() => {
@@ -81,7 +85,39 @@ const OrderTable = () => {
     }
   };
 
-  const processOrdersWithProducts = async (rawOrders: any[]): Promise<ProcessedOrder[]> => {
+  const processOrdersWithProducts = async (
+    rawOrders: any[],
+  ): Promise<ProcessedOrder[]> => {
+    // First, collect all unique product IDs from all orders
+    const allProductIds = new Set<string>();
+
+    for (const order of rawOrders) {
+      for (const itemString of order.items || []) {
+        const [productId] = itemString.split(",");
+        if (productId) allProductIds.add(productId);
+      }
+    }
+
+    // Fetch all products in a single batch request
+    let productMap = new Map();
+    if (allProductIds.size > 0) {
+      try {
+        const batchResponse = await fetch("/api/products/batch", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ productIds: Array.from(allProductIds) }),
+        });
+
+        if (batchResponse.ok) {
+          const products = await batchResponse.json();
+          productMap = new Map(Object.entries(products));
+        }
+      } catch (err) {
+        console.error("Failed to fetch products batch:", err);
+      }
+    }
+
+    // Now process orders using the product map
     const processedOrders: ProcessedOrder[] = [];
 
     for (const order of rawOrders) {
@@ -92,37 +128,23 @@ const OrderTable = () => {
         const quantity = parseInt(quantityStr, 10);
 
         if (productId && !isNaN(quantity)) {
-          try {
-            const productResponse = await fetch(`/api/products/${productId}`);
-            
-            if (productResponse.ok) {
-              const product = await productResponse.json();
-              const price = parseFloat(product.price) || 0;
-              
-              processedItems.push({
-                id: `${productId}-${Date.now()}-${Math.random()}`,
-                productId: productId,
-                productName: product.productName || "Unknown Product",
-                quantity: quantity,
-                price: price,
-                totalPrice: price * quantity,
-              });
-            } else {
-              processedItems.push({
-                id: `${productId}-${Date.now()}-${Math.random()}`,
-                productId: productId,
-                productName: `Product not found (${productId})`,
-                quantity: quantity,
-                price: 0,
-                totalPrice: 0,
-              });
-            }
-          } catch (err) {
-            console.error(`Failed to fetch product ${productId}:`, err);
+          const product = productMap.get(productId);
+
+          if (product) {
+            const price = parseFloat(product.price) || 0;
             processedItems.push({
               id: `${productId}-${Date.now()}-${Math.random()}`,
               productId: productId,
-              productName: `Error loading product`,
+              productName: product.productName || "Unknown Product",
+              quantity: quantity,
+              price: price,
+              totalPrice: price * quantity,
+            });
+          } else {
+            processedItems.push({
+              id: `${productId}-${Date.now()}-${Math.random()}`,
+              productId: productId,
+              productName: `Product not found (${productId})`,
               quantity: quantity,
               price: 0,
               totalPrice: 0,
@@ -135,7 +157,11 @@ const OrderTable = () => {
         id: order.$id,
         orderNumber: order.orderNumber,
         date: order.$createdAt,
-        total: order.totalAmount || processedItems.reduce((sum, item) => sum + item.totalPrice, 0),
+        total:
+          typeof order.totalAmount === "string"
+            ? parseFloat(order.totalAmount)
+            : order.totalAmount ||
+              processedItems.reduce((sum, item) => sum + item.totalPrice, 0),
         items: processedItems,
       });
     }
@@ -145,23 +171,22 @@ const OrderTable = () => {
 
   const handleDeleteOrder = async () => {
     if (!orderToDelete) return;
-    
+
     setDeleting(true);
     try {
       const response = await fetch(`/api/orders/${orderToDelete.id}`, {
         method: "DELETE",
       });
-      
+
       if (!response.ok) {
         const errorData = await response.json();
         throw new Error(errorData.error || "Failed to delete order");
       }
-      
+
       // Refresh orders list
       await fetchOrders();
       setDeleteModalOpen(false);
       setOrderToDelete(null);
-      
     } catch (err) {
       console.error("Error deleting order:", err);
       setError(err instanceof Error ? err.message : "Failed to delete order");
@@ -174,11 +199,13 @@ const OrderTable = () => {
   };
 
   const printInvoice = (order: ProcessedOrder) => {
-    const printWindow = window.open('', '_blank');
+    const printWindow = window.open("", "_blank");
     if (!printWindow) return;
 
     // Generate table rows HTML
-    const tableRows = order.items.map((item, index) => `
+    const tableRows = order.items
+      .map(
+        (item, index) => `
       <tr>
         <td class="item-sn">${index + 1}</td>
         <td class="item-name">${item.productName}</td>
@@ -186,7 +213,9 @@ const OrderTable = () => {
         <td class="item-rate">${item.price.toFixed(2)}</td>
         <td class="item-price">${item.totalPrice.toFixed(2)}</td>
       </tr>
-    `).join('');
+    `,
+      )
+      .join("");
 
     const invoiceHtml = `
       <!DOCTYPE html>
@@ -471,7 +500,10 @@ const OrderTable = () => {
     return (
       <tbody className="divide-y divide-gray-200">
         <tr>
-          <td colSpan={5} className="px-6 py-12 text-center text-sm text-gray-500">
+          <td
+            colSpan={5}
+            className="px-6 py-12 text-center text-sm text-gray-500"
+          >
             <div className="flex justify-center items-center gap-2">
               <div className="inline-block animate-spin rounded-full h-5 w-5 border-2 border-blue-600 border-t-transparent"></div>
               Loading orders...
@@ -501,7 +533,10 @@ const OrderTable = () => {
       <tbody className="divide-y divide-gray-200">
         {orders.length === 0 ? (
           <tr>
-            <td colSpan={5} className="px-6 py-12 text-center text-sm text-gray-500">
+            <td
+              colSpan={5}
+              className="px-6 py-12 text-center text-sm text-gray-500"
+            >
               No orders found.
             </td>
           </tr>
@@ -528,14 +563,24 @@ const OrderTable = () => {
                     className="p-2 rounded-lg text-blue-600 hover:bg-blue-50 transition-all duration-200 group"
                     title="View Details"
                   >
-                    <svg 
-                      className="w-5 h-5 group-hover:scale-110 transition-transform" 
-                      fill="none" 
-                      stroke="currentColor" 
+                    <svg
+                      className="w-5 h-5 group-hover:scale-110 transition-transform"
+                      fill="none"
+                      stroke="currentColor"
                       viewBox="0 0 24 24"
                     >
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        strokeWidth={2}
+                        d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"
+                      />
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        strokeWidth={2}
+                        d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"
+                      />
                     </svg>
                   </button>
 
@@ -545,13 +590,18 @@ const OrderTable = () => {
                     className="p-2 rounded-lg text-green-600 hover:bg-green-50 transition-all duration-200 group"
                     title="Print Invoice"
                   >
-                    <svg 
-                      className="w-5 h-5 group-hover:scale-110 transition-transform" 
-                      fill="none" 
-                      stroke="currentColor" 
+                    <svg
+                      className="w-5 h-5 group-hover:scale-110 transition-transform"
+                      fill="none"
+                      stroke="currentColor"
                       viewBox="0 0 24 24"
                     >
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4a2 2 0 002 2zm8-12V5a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z" />
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        strokeWidth={2}
+                        d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4a2 2 0 002 2zm8-12V5a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z"
+                      />
                     </svg>
                   </button>
 
@@ -561,13 +611,18 @@ const OrderTable = () => {
                     className="p-2 rounded-lg text-red-600 hover:bg-red-50 transition-all duration-200 group"
                     title="Delete Order"
                   >
-                    <svg 
-                      className="w-5 h-5 group-hover:scale-110 transition-transform" 
-                      fill="none" 
-                      stroke="currentColor" 
+                    <svg
+                      className="w-5 h-5 group-hover:scale-110 transition-transform"
+                      fill="none"
+                      stroke="currentColor"
                       viewBox="0 0 24 24"
                     >
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        strokeWidth={2}
+                        d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"
+                      />
                     </svg>
                   </button>
                 </div>
@@ -643,7 +698,9 @@ const OrderTable = () => {
 
               <div className="border-t border-gray-200 pt-4">
                 <div className="flex justify-between items-center">
-                  <p className="text-lg font-semibold text-gray-900">Total Amount</p>
+                  <p className="text-lg font-semibold text-gray-900">
+                    Total Amount
+                  </p>
                   <p className="text-2xl font-bold text-gray-900">
                     ৳{selectedOrder.total.toFixed(2)}
                   </p>
@@ -677,16 +734,24 @@ const OrderTable = () => {
         <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center p-4 z-50">
           <div className="bg-white rounded-lg shadow-xl max-w-md w-full">
             <div className="border-b border-gray-200 px-6 py-4">
-              <h3 className="text-xl font-bold text-gray-900">Confirm Delete</h3>
+              <h3 className="text-xl font-bold text-gray-900">
+                Confirm Delete
+              </h3>
             </div>
-            
+
             <div className="px-6 py-4">
               <p className="text-gray-700">
-                Are you sure you want to delete order <span className="font-semibold">{orderToDelete.orderNumber}</span>?
+                Are you sure you want to delete order{" "}
+                <span className="font-semibold">
+                  {orderToDelete.orderNumber}
+                </span>
+                ?
               </p>
-              <p className="text-sm text-gray-500 mt-2">This action cannot be undone.</p>
+              <p className="text-sm text-gray-500 mt-2">
+                This action cannot be undone.
+              </p>
             </div>
-            
+
             <div className="border-t border-gray-200 px-6 py-4 bg-gray-50 rounded-b-lg flex gap-3">
               <button
                 onClick={() => setDeleteModalOpen(false)}
