@@ -9,6 +9,26 @@ interface Product {
   $createdAt?: string;
 }
 
+// Database model (for API responses)
+interface DbOrderItem {
+  id: string;
+  productId: string;
+  productName: string;
+  quantity: number;
+  price: number;
+  totalPrice: string; // Stored as string in database
+}
+
+// Print model (for invoice display)
+interface PrintOrderItem {
+  id: string;
+  productId: string;
+  productName: string;
+  quantity: number;
+  price: number;
+  totalPrice: number; // Used as number for calculations
+}
+
 interface CartItem extends Product {
   quantity: number;
 }
@@ -27,7 +47,7 @@ interface OrderForPrint {
   orderNumber: string;
   date: string;
   total: number;
-  items: OrderItem[];
+  items: PrintOrderItem[]; // Use PrintOrderItem here
 }
 
 const formatDate = (rawDate: string) => {
@@ -108,7 +128,7 @@ const CartClient = () => {
     setCart((existingCart) =>
       existingCart.map((item) =>
         item.$id === productId ? { ...item, quantity: newQuantity } : item,
-      )
+      ),
     );
   };
 
@@ -127,16 +147,21 @@ const CartClient = () => {
   }, [cart]);
 
   // Create order data for print directly from cart
-  const createOrderForPrint = (orderId: string, orderNumber: string, createdAt: string): OrderForPrint => {
-    const processedItems: OrderItem[] = cart.map((item, index) => {
-      const price = typeof item.price === "string" ? parseFloat(item.price) : item.price;
+  const createOrderForPrint = (
+    orderId: string,
+    orderNumber: string,
+    createdAt: string,
+  ): OrderForPrint => {
+    const processedItems: PrintOrderItem[] = cart.map((item, index) => {
+      const price =
+        typeof item.price === "string" ? parseFloat(item.price) : item.price;
       return {
         id: `${item.$id}-${Date.now()}-${index}`,
         productId: item.$id,
         productName: item.productName,
         quantity: item.quantity,
         price: price,
-        totalPrice: price * item.quantity,
+        totalPrice: price * item.quantity, // Keep as number for calculations
       };
     });
 
@@ -151,10 +176,12 @@ const CartClient = () => {
 
   // Print Invoice function
   const printInvoice = (order: OrderForPrint) => {
-    const printWindow = window.open('', '_blank');
+    const printWindow = window.open("", "_blank");
     if (!printWindow) return;
 
-    const tableRows = order.items.map((item, index) => `
+    const tableRows = order.items
+      .map(
+        (item, index) => `
       <tr>
         <td class="item-sn">${index + 1}</td>
         <td class="item-name">${item.productName}</td>
@@ -162,7 +189,9 @@ const CartClient = () => {
         <td class="item-rate">${item.price.toFixed(2)}</td>
         <td class="item-price">${item.totalPrice.toFixed(2)}</td>
       </tr>
-    `).join('');
+    `,
+      )
+      .join("");
 
     const invoiceHtml = `
       <!DOCTYPE html>
@@ -429,68 +458,71 @@ const CartClient = () => {
   };
 
   const handleCreateOrder = async () => {
-  if (cart.length === 0) {
-    setError("Add at least one product to the cart first.");
-    setStatusMessage(null);
-    return;
-  }
-
-  try {
-    setSavingOrder(true);
-    const orderNumber = `ORD-${Date.now()}`;
-    const orderData = {
-      orderNumber,
-      totalAmount: totalAmount.toString(), // Convert to string
-      items: cart.map((item) => item.$id + "," + item.quantity),
-    };
-
-    const response = await fetch("/api/orders", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(orderData),
-    });
-    
-    if (!response.ok) {
-      const errorData = await response.json();
-      throw new Error(errorData.error || "Failed to create order");
+    if (cart.length === 0) {
+      setError("Add at least one product to the cart first.");
+      setStatusMessage(null);
+      return;
     }
 
-    const createdOrder = await response.json();
-    
-    // Create order data for printing directly from cart
-    const orderForPrint = createOrderForPrint(
-      createdOrder.$id,
-      createdOrder.orderNumber,
-      createdOrder.$createdAt
-    );
+    try {
+      setSavingOrder(true);
+      const orderNumber = `ORD-${Date.now()}`;
+      const orderData = {
+        orderNumber,
+        totalAmount: totalAmount.toString(), // Convert to string
+        items: cart.map((item) => item.$id + "," + item.quantity),
+      };
 
-    // Clear the cart
-    setCart([]);
-    setStatusMessage(`Order ${orderNumber} created successfully. Printing invoice...`);
-    
-    // Print the invoice
-    printInvoice(orderForPrint);
-    
-    // Update status message after a short delay
-    setTimeout(() => {
-      setStatusMessage(`Order ${orderNumber} created successfully. Invoice printed.`);
-      
-      // Clear status message after 3 seconds
+      const response = await fetch("/api/orders", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(orderData),
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || "Failed to create order");
+      }
+
+      const createdOrder = await response.json();
+
+      // Create order data for printing directly from cart
+      const orderForPrint = createOrderForPrint(
+        createdOrder.$id,
+        createdOrder.orderNumber,
+        createdOrder.$createdAt,
+      );
+
+      // Clear the cart
+      setCart([]);
+      setStatusMessage(
+        `Order ${orderNumber} created successfully. Printing invoice...`,
+      );
+
+      // Print the invoice
+      printInvoice(orderForPrint);
+
+      // Update status message after a short delay
       setTimeout(() => {
-        setStatusMessage(null);
-      }, 3000);
-    }, 1000);
-    
-    setError(null);
-    
-  } catch (err) {
-    console.error("Error creating order:", err);
-    setError(err instanceof Error ? err.message : "Failed to create order");
-    setStatusMessage(null);
-  } finally {
-    setSavingOrder(false);
-  }
-};
+        setStatusMessage(
+          `Order ${orderNumber} created successfully. Invoice printed.`,
+        );
+
+        // Clear status message after 3 seconds
+        setTimeout(() => {
+          setStatusMessage(null);
+        }, 3000);
+      }, 1000);
+
+      setError(null);
+    } catch (err) {
+      console.error("Error creating order:", err);
+      setError(err instanceof Error ? err.message : "Failed to create order");
+      setStatusMessage(null);
+    } finally {
+      setSavingOrder(false);
+    }
+  };
 
   return (
     <div className="min-h-screen bg-slate-50 p-6">
@@ -501,9 +533,7 @@ const CartClient = () => {
               <h1 className="text-3xl font-semibold text-slate-900">
                 POS Order Builder
               </h1>
-              <p className="mt-2 text-sm text-slate-600">
-                Make your order
-              </p>
+              <p className="mt-2 text-sm text-slate-600">Make your order</p>
             </div>
             <div className="grid gap-3 sm:grid-flow-col sm:auto-cols-max">
               <div className="rounded-2xl bg-slate-100 px-4 py-3 text-sm text-slate-700">
@@ -656,7 +686,7 @@ const CartClient = () => {
                               onChange={(event) =>
                                 updateCartQuantity(
                                   item.$id,
-                                  parseInt(event.target.value) || 1
+                                  parseInt(event.target.value) || 1,
                                 )
                               }
                               className="w-20 rounded-2xl border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-900 outline-none"
