@@ -33,14 +33,6 @@ interface CartItem extends Product {
   quantity: number;
 }
 
-interface OrderItem {
-  id: string;
-  productId: string;
-  productName: string;
-  quantity: number;
-  price: number;
-  totalPrice: string;
-}
 
 interface OrderForPrint {
   id: string;
