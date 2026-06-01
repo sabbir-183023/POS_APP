@@ -4,7 +4,9 @@ import Product from "@/app/models/Product";
 
 // PUT: Update a specific product
 export async function PUT(request, { params }) {
-  const { id } = params;
+  // AWAIT THE PARAMS HERE
+  const { id } = await params; 
+  
   try {
     const body = await request.json();
     await connectToDatabase();
@@ -17,7 +19,9 @@ export async function PUT(request, { params }) {
 
 // DELETE: Remove a specific product
 export async function DELETE(request, { params }) {
-  const { id } = params;
+  // AWAIT THE PARAMS HERE
+  const { id } = await params; 
+  
   try {
     await connectToDatabase();
     await Product.findByIdAndDelete(id);
