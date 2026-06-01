@@ -3,7 +3,7 @@ import CartClient from "./components/CartClient";
 
 export default function Home() {
   return (
-    <div className="min-h-screen bg-slate-50 p-6">
+    <div className="min-h-screen bg-slate-50 p-1">
       <div className="mx-auto max-w-6xl space-y-8">
         <header className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">
           <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
@@ -31,7 +31,7 @@ export default function Home() {
             </div>
           </div>
         </header>
-        <div className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">
+        <div className="rounded-3xl border border-slate-200 bg-white p-2 shadow-sm">
           <CartClient />
         </div>
       </div>
